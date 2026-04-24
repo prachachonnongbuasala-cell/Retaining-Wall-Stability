@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>แบบจำลองวิศวกรรมกำแพงกันดินริมน้ำ</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f4f9;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            max-width: 800px;
+            width: 100%;
+        }
+        canvas {
+            background-color: #e0f7fa;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            display: block;
+            margin: 0 auto 20px auto;
+        }
+        .controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 5px;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+        }
+        label {
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #333;
+        }
+        input[type="range"] {
+            width: 100%;
+        }
+        .status-panel {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            text-align: center;
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+        .safe { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .unsafe { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2 style="text-align: center; color: #2c3e50;">แบบจำลองเสถียรภาพกำแพงกันดิน (Retaining Wall Stability)</h2>
+    
+    <canvas id="simCanvas" width="700" height="400"></canvas>
+
+    <div class="controls">
+        <div class="control-group">
+            <label for="waterLevel">ระดับน้ำสะสมในดิน (หลังกำแพง): <span id="waterVal">0</span>%</label>
+            <input type="range" id="waterLevel" min="0" max="100" value="0">
+        </div>
+        <div class="control-group">
+            <label for="drainage">ระบบท่อระบายน้ำ (Weep Hole):</label>
+            <select id="drainage" style="padding: 5px;">
+                <option value="clear">ระบายปกติ (ไม่มีน้ำสะสม)</option>
+                <option value="clogged">อุดตัน (น้ำสะสมตามสไลเดอร์)</option>
+            </select>
+        </div>
+    </div>
+
+    <div id="statusPanel" class="status-panel safe">
+        สถานะ: ปลอดภัย (F.S. = <span id="fsVal">∞</span>)
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // UI Elements
+    const waterLevelSlider = document.getElementById('waterLevel');
+    const waterValText = document.getElementById('waterVal');
+    const drainageSelect = document.getElementById('drainage');
+    const statusPanel = document.getElementById('statusPanel');
+    const fsValText = document.getElementById('fsVal');
+
+    // Wall Geometry
+    const originX = 350; // Base left point X
+    const originY = 320; // Base bottom point Y
+    const baseWidth = 150;
+    const baseHeight = 30;
+    const stemWidth = 30;
+    const stemHeight = 200;
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Inputs
+        let waterSliderValue = parseInt(waterLevelSlider.value);
+        let isClogged = drainageSelect.value === 'clogged';
+        let effectiveWaterHeight = isClogged ? (waterSliderValue / 100) * stemHeight : 0;
+        
+        // Physics / Math Calculation (Simplified Mockup for Overturning)
+        // 1. Resisting Moment (Weight of Wall)
+        let wallWeight = 5000; 
+        let resistingMoment = wallWeight * (baseWidth / 2); // Assume CG is roughly center of base
+
+        // 2. Overturning Moment (Water Pressure)
+        // Force = 0.5 * density * g * h^2 (simplified as a factor)
+        let waterForce = 0.5 * 10 * Math.pow(effectiveWaterHeight, 2); 
+        // Moment Arm = h / 3 from base
+        let overturningMoment = waterForce * (effectiveWaterHeight / 3);
+
+        // Calculate Factor of Safety (F.S.)
+        let fs = overturningMoment > 0 ? (resistingMoment / overturningMoment) : 999;
+        let isFailing = fs < 1.0;
+
+        // Update UI Text
+        waterValText.innerText = waterSliderValue;
+        if(effectiveWaterHeight === 0 && waterSliderValue > 0) {
+             fsValText.innerText = "น้ำไหลออกปกติ";
+        } else {
+             fsValText.innerText = fs > 99 ? "สูงมาก" : fs.toFixed(2);
+        }
+
+        if (isFailing) {
+            statusPanel.className = "status-panel unsafe";
+            statusPanel.innerHTML = `สถานะ: ไม่ปลอดภัย กำแพงวิบัติ (F.S. = ${fs.toFixed(2)})`;
+        } else {
+            statusPanel.className = "status-panel safe";
+            statusPanel.innerHTML = `สถานะ: ปลอดภัย (F.S. = ${fs > 99 ? "สูงมาก" : fs.toFixed(2)})`;
+        }
+
+        // --- DRAWING ---
+
+        // Draw Water body in front (Static)
+        ctx.fillStyle = "rgba(0, 150, 255, 0.5)";
+        ctx.fillRect(0, originY - 50, originX, canvas.height - (originY - 50));
+
+        // Draw Soil Bed (Ground under wall)
+        ctx.fillStyle = "#8d6e63";
+        ctx.fillRect(0, originY, canvas.width, canvas.height - originY);
+
+        // Draw Soil behind wall
+        ctx.fillStyle = "#a1887f";
+        ctx.fillRect(originX + stemWidth, originY - stemHeight, canvas.width, stemHeight);
+
+        // Draw Water level inside soil (if clogged)
+        if (effectiveWaterHeight > 0) {
+            ctx.fillStyle = "rgba(0, 150, 255, 0.4)";
+            let waterY = originY - effectiveWaterHeight;
+            ctx.fillRect(originX + stemWidth, waterY, canvas.width, effectiveWaterHeight);
+            
+            // Draw Water Pressure Arrow
+            ctx.fillStyle = "red";
+            ctx.font = "14px Tahoma";
+            ctx.fillText("แรงดันน้ำ (Water Pressure)", originX + stemWidth + 10, originY - (effectiveWaterHeight / 3));
+            ctx.beginPath();
+            ctx.moveTo(originX + stemWidth, originY - (effectiveWaterHeight / 3));
+            ctx.lineTo(originX + stemWidth + 40, originY - (effectiveWaterHeight / 3));
+            ctx.strokeStyle = "red";
+            ctx.lineWidth = 3;
+            ctx.stroke();
+        }
+
+        // Apply Transformation if Failing (Overturning)
+        ctx.save();
+        if (isFailing) {
+            // Rotate around the bottom-left corner of the base (Toe)
+            let rotationAngle = -0.3; // Radians to tilt left
+            ctx.translate(originX, originY);
+            ctx.rotate(rotationAngle);
+            ctx.translate(-originX, -originY);
+            
+            // Draw crack/collapse text
+            ctx.fillStyle = "red";
+            ctx.font = "bold 20px Tahoma";
+            ctx.fillText("💥 ดินสไลด์ / กำแพงพลิกคว่ำ!", originX - 150, originY - 100);
+        }
+
+        // Draw Retaining Wall
+        ctx.fillStyle = "#9e9e9e"; // Concrete color
+        ctx.strokeStyle = "#424242";
+        ctx.lineWidth = 2;
+
+        ctx.beginPath();
+        // Base
+        ctx.rect(originX, originY - baseHeight, baseWidth, baseHeight);
+        // Stem
+        ctx.rect(originX, originY - stemHeight, stemWidth, stemHeight);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.restore(); // Reset transformation
+    }
+
+    // Event Listeners
+    waterLevelSlider.addEventListener('input', draw);
+    drainageSelect.addEventListener('change', draw);
+
+    // Initial Draw
+    draw();
+</script>
+
+</body>
+</html>
